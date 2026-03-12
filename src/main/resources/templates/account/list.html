@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/default}">
+<head>
+    <title>계정과목 관리</title>
+</head>
+<body>
+<div layout:fragment="content">
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-1"><i class="bi bi-journal-text"></i> 계정과목 관리</h4>
+            <p class="text-muted mb-0 small">계정과목을 유형별로 관리합니다.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a th:href="@{/accounts/new}" class="btn btn-primary">
+                <i class="bi bi-plus-circle me-1"></i> 신규 등록
+            </a>
+        </div>
+    </div>
+
+    <!-- 알림 메시지 -->
+    <div th:if="${message}" class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="bi bi-check-circle me-1"></i>
+        <span th:text="${message}"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+
+    <!-- 유형별 요약 카드 -->
+    <div class="row g-3 mb-4">
+        <div class="col" th:each="entry : ${groupedAccounts}">
+            <div class="card text-center h-100">
+                <div class="card-body py-3">
+                    <div class="fs-4 fw-bold"
+                         th:classappend="${entry.key.name() == 'ASSET'} ? 'text-primary' : (${entry.key.name() == 'LIABILITY'} ? 'text-danger' : (${entry.key.name() == 'EQUITY'} ? 'text-success' : (${entry.key.name() == 'REVENUE'} ? 'text-info' : 'text-warning')))"
+                         th:text="${#lists.size(entry.value)}">0</div>
+                    <div class="small text-muted" th:text="${entry.key.label}">유형</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 유형별 그룹화 목록 -->
+    <div class="accordion" id="accountAccordion">
+        <div class="accordion-item" th:each="entry, stat : ${groupedAccounts}">
+            <h2 class="accordion-header" th:id="'heading-' + ${entry.key.name()}">
+                <button class="accordion-button"
+                        th:classappend="${stat.index > 0} ? 'collapsed' : ''"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        th:data-bs-target="'#collapse-' + ${entry.key.name()}"
+                        th:attr="aria-controls='collapse-' + ${entry.key.name()}">
+                    <i class="bi me-2"
+                       th:classappend="${entry.key.name() == 'ASSET'} ? 'bi-safe text-primary' : (${entry.key.name() == 'LIABILITY'} ? 'bi-credit-card text-danger' : (${entry.key.name() == 'EQUITY'} ? 'bi-bank text-success' : (${entry.key.name() == 'REVENUE'} ? 'bi-graph-up-arrow text-info' : 'bi-cash-stack text-warning')))"></i>
+                    <strong th:text="${entry.key.label}">유형</strong>
+                    <span class="badge bg-secondary ms-2" th:text="${#lists.size(entry.value)} + '건'">0건</span>
+                </button>
+            </h2>
+            <div th:id="'collapse-' + ${entry.key.name()}"
+                 class="accordion-collapse collapse"
+                 th:classappend="${stat.index == 0} ? 'show' : ''"
+                 data-bs-parent="#accountAccordion">
+                <div class="accordion-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                            <tr>
+                                <th style="width: 100px;">코드</th>
+                                <th>계정명</th>
+                                <th>설명</th>
+                                <th style="width: 80px;" class="text-center">상태</th>
+                                <th style="width: 120px;" class="text-center">관리</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="account : ${entry.value}">
+                                <td>
+                                    <span class="badge bg-light text-dark border" th:text="${account.code}"></span>
+                                </td>
+                                <td class="fw-medium" th:text="${account.name}"></td>
+                                <td class="text-muted small" th:text="${account.description != null} ? ${account.description} : '-'"></td>
+                                <td class="text-center">
+                                    <span th:if="${account.active}" class="badge bg-success">활성</span>
+                                    <span th:unless="${account.active}" class="badge bg-danger">비활성</span>
+                                </td>
+                                <td class="text-center">
+                                    <div class="btn-group btn-group-sm">
+                                        <a th:href="@{/accounts/{id}/edit(id=${account.id})}"
+                                           class="btn btn-outline-primary" title="수정">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <a th:href="@{/accounts/{id}/delete(id=${account.id})}"
+                                           class="btn btn-outline-danger" title="삭제"
+                                           onclick="return confirm('정말 삭제하시겠습니까?')">
+                                            <i class="bi bi-trash"></i>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr th:if="${#lists.isEmpty(entry.value)}">
+                                <td colspan="5" class="text-center text-muted py-3">
+                                    <i class="bi bi-inbox d-block mb-1"></i>
+                                    등록된 계정과목이 없습니다.
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

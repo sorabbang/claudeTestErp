@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/default}">
+<head>
+    <title>디버그 콘솔</title>
+    <style>
+        .debug-card { border-left: 3px solid; }
+        .debug-card-system { border-color: #6366f1; }
+        .debug-card-memory { border-color: #10b981; }
+        .debug-card-data { border-color: #f59e0b; }
+        .debug-card-db { border-color: #3b82f6; }
+        .sql-editor {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            background: #1e1e2e;
+            color: #cdd6f4;
+            border: none;
+            resize: vertical;
+        }
+        .sql-editor:focus {
+            background: #1e1e2e;
+            color: #cdd6f4;
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+        }
+        .result-table th {
+            background: #f1f5f9;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .result-table td {
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+        }
+        .query-preset {
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .query-preset:hover {
+            background: #e2e8f0;
+        }
+        .memory-bar {
+            height: 24px;
+            border-radius: 12px;
+        }
+        .info-label {
+            font-size: 12px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .info-value {
+            font-weight: 600;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+<div layout:fragment="content">
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-1"><i class="bi bi-bug"></i> 디버그 콘솔</h4>
+            <p class="text-muted mb-0 small">시스템 상태 모니터링 및 데이터 조회 도구</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-warning" onclick="runGc()">
+                <i class="bi bi-recycle"></i> GC 실행
+            </button>
+            <button class="btn btn-sm btn-outline-primary" onclick="location.reload()">
+                <i class="bi bi-arrow-clockwise"></i> 새로고침
+            </button>
+        </div>
+    </div>
+
+    <!-- Row 1: System + Memory -->
+    <div class="row g-3 mb-3">
+        <!-- 시스템 정보 -->
+        <div class="col-lg-7">
+            <div class="card debug-card debug-card-system h-100">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-cpu me-2"></i>시스템 정보</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6" th:each="entry : ${systemInfo}">
+                            <div class="info-label" th:text="${entry.key}">key</div>
+                            <div class="info-value" th:text="${entry.value}">value</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 메모리 -->
+        <div class="col-lg-5">
+            <div class="card debug-card debug-card-memory h-100">
+                <div class="card-header d-flex justify-content-between">
+                    <h6 class="mb-0"><i class="bi bi-memory me-2"></i>JVM 메모리</h6>
+                    <span class="badge" id="memBadge"
+                          th:classappend="${memoryPercent > 80} ? 'bg-danger' : (${memoryPercent > 60} ? 'bg-warning' : 'bg-success')"
+                          th:text="${memoryPercent} + '%'">0%</span>
+                </div>
+                <div class="card-body">
+                    <div class="progress memory-bar mb-3">
+                        <div class="progress-bar"
+                             th:classappend="${memoryPercent > 80} ? 'bg-danger' : (${memoryPercent > 60} ? 'bg-warning' : 'bg-success')"
+                             role="progressbar"
+                             th:style="'width:' + ${memoryPercent} + '%'"
+                             th:text="${usedMemory} + 'MB / ' + ${maxMemory} + 'MB'">0MB</div>
+                    </div>
+                    <div class="row text-center">
+                        <div class="col-4">
+                            <div class="info-label">사용중</div>
+                            <div class="info-value text-danger" th:text="${usedMemory} + 'MB'">0MB</div>
+                        </div>
+                        <div class="col-4">
+                            <div class="info-label">여유</div>
+                            <div class="info-value text-success" th:text="${freeMemory} + 'MB'">0MB</div>
+                        </div>
+                        <div class="col-4">
+                            <div class="info-label">최대</div>
+                            <div class="info-value" th:text="${maxMemory} + 'MB'">0MB</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Row 2: Data + DB -->
+    <div class="row g-3 mb-3">
+        <!-- 데이터 현황 -->
+        <div class="col-lg-5">
+            <div class="card debug-card debug-card-data h-100">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-database me-2"></i>데이터 현황</h6>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                        <tr>
+                            <th>테이블</th>
+                            <th class="text-end">건수</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="entry : ${dataCounts}">
+                            <td>
+                                <i class="bi bi-table me-1 text-muted"></i>
+                                <span th:text="${entry.key}">table</span>
+                            </td>
+                            <td class="text-end fw-bold" th:text="${entry.value}">0</td>
+                        </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="px-3 py-2 border-top">
+                        <div class="info-label mb-1">H2 테이블 목록</div>
+                        <div th:each="table : ${tables}" class="d-inline-block me-2 mb-1">
+                            <span class="badge bg-light text-dark border" th:text="${table.get('TABLE_NAME')}">TABLE</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DB 접속 정보 -->
+        <div class="col-lg-7">
+            <div class="card debug-card debug-card-db h-100">
+                <div class="card-header d-flex justify-content-between">
+                    <h6 class="mb-0"><i class="bi bi-plug me-2"></i>DB 설정</h6>
+                    <a href="/h2-console" target="_blank" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-box-arrow-up-right me-1"></i>H2 Console
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6" th:each="entry : ${dbInfo}">
+                            <div class="info-label" th:text="${entry.key}">key</div>
+                            <div class="info-value" th:text="${entry.value}" style="word-break: break-all;">value</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SQL 콘솔 -->
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="bi bi-terminal me-2"></i>SQL 콘솔 <span class="badge bg-warning text-dark">READ ONLY</span></h6>
+            <div>
+                <button class="btn btn-sm btn-primary" onclick="executeQuery()">
+                    <i class="bi bi-play-fill"></i> 실행 (Ctrl+Enter)
+                </button>
+            </div>
+        </div>
+        <div class="card-body pb-2">
+            <!-- 프리셋 쿼리 -->
+            <div class="mb-2">
+                <span class="small text-muted me-2">빠른 쿼리:</span>
+                <span class="badge bg-light text-dark border query-preset me-1"
+                      onclick="setQuery('SELECT * FROM ACCOUNTS ORDER BY TYPE, CODE')">계정과목 전체</span>
+                <span class="badge bg-light text-dark border query-preset me-1"
+                      onclick="setQuery('SELECT * FROM JOURNALS ORDER BY TRANSACTION_DATE DESC')">전표 목록</span>
+                <span class="badge bg-light text-dark border query-preset me-1"
+                      onclick="setQuery('SELECT j.VOUCHER_NO, j.STATUS, e.DEBIT_AMOUNT, e.CREDIT_AMOUNT, a.NAME as ACCOUNT_NAME\nFROM JOURNAL_ENTRIES e\nJOIN JOURNALS j ON e.JOURNAL_ID = j.ID\nJOIN ACCOUNTS a ON e.ACCOUNT_ID = a.ID\nORDER BY j.TRANSACTION_DATE DESC')">분개 상세</span>
+                <span class="badge bg-light text-dark border query-preset me-1"
+                      onclick="setQuery('SELECT TYPE, COUNT(*) as CNT FROM ACCOUNTS GROUP BY TYPE')">유형별 집계</span>
+                <span class="badge bg-light text-dark border query-preset me-1"
+                      onclick="setQuery('SELECT STATUS, COUNT(*) as CNT, SUM(TOTAL_AMOUNT) as TOTAL FROM JOURNALS GROUP BY STATUS')">상태별 집계</span>
+            </div>
+            <textarea class="form-control sql-editor" id="sqlInput" rows="4"
+                      placeholder="SELECT * FROM ACCOUNTS ...">SELECT * FROM ACCOUNTS ORDER BY TYPE, CODE</textarea>
+        </div>
+
+        <!-- 결과 영역 -->
+        <div id="queryResult" class="card-body border-top pt-2" style="display: none;">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="small text-muted" id="resultInfo"></span>
+                <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('queryResult').style.display='none'">
+                    <i class="bi bi-x"></i> 닫기
+                </button>
+            </div>
+            <div id="resultArea" class="table-responsive" style="max-height: 400px; overflow-y: auto;"></div>
+        </div>
+    </div>
+</div>
+
+<th:block layout:fragment="scripts">
+<script>
+    // Ctrl+Enter로 쿼리 실행
+    document.getElementById('sqlInput').addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.key === 'Enter') {
+            e.preventDefault();
+            executeQuery();
+        }
+        // Tab 들여쓰기
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            var start = this.selectionStart;
+            var end = this.selectionEnd;
+            this.value = this.value.substring(0, start) + '    ' + this.value.substring(end);
+            this.selectionStart = this.selectionEnd = start + 4;
+        }
+    });
+
+    function setQuery(sql) {
+        document.getElementById('sqlInput').value = sql;
+    }
+
+    function executeQuery() {
+        var sql = document.getElementById('sqlInput').value.trim();
+        if (!sql) return;
+
+        var resultDiv = document.getElementById('queryResult');
+        var resultArea = document.getElementById('resultArea');
+        var resultInfo = document.getElementById('resultInfo');
+
+        resultDiv.style.display = 'block';
+        resultArea.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div> 실행 중...</div>';
+
+        fetch('/debug/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sql: sql })
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data.error) {
+                resultArea.innerHTML = '<div class="alert alert-danger mb-0"><i class="bi bi-exclamation-triangle me-1"></i>' + data.error + '</div>';
+                resultInfo.textContent = '';
+                return;
+            }
+
+            resultInfo.textContent = data.rowCount + '건 조회 (' + data.elapsed + ')';
+
+            if (data.rowCount === 0) {
+                resultArea.innerHTML = '<div class="text-muted text-center py-3"><i class="bi bi-inbox fs-4 d-block mb-1"></i>결과 없음</div>';
+                return;
+            }
+
+            var html = '<table class="table table-sm table-bordered result-table mb-0">';
+            html += '<thead><tr>';
+            data.columns.forEach(function(col) {
+                html += '<th>' + col + '</th>';
+            });
+            html += '</tr></thead><tbody>';
+
+            data.rows.forEach(function(row) {
+                html += '<tr>';
+                data.columns.forEach(function(col) {
+                    var val = row[col];
+                    if (val === null) {
+                        html += '<td class="text-muted fst-italic">NULL</td>';
+                    } else {
+                        html += '<td>' + escapeHtml(String(val)) + '</td>';
+                    }
+                });
+                html += '</tr>';
+            });
+
+            html += '</tbody></table>';
+            resultArea.innerHTML = html;
+        })
+        .catch(function(err) {
+            resultArea.innerHTML = '<div class="alert alert-danger mb-0">통신 오류: ' + err.message + '</div>';
+        });
+    }
+
+    function runGc() {
+        fetch('/debug/gc', { method: 'POST' })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            alert(data.message);
+            location.reload();
+        });
+    }
+
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+</script>
+</th:block>
+</body>
+</html>
