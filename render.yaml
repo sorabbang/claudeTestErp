@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: erp-system
+    runtime: docker
+    repo: https://github.com/sorabbang/claudeTestErp.git
+    branch: main
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 8080
